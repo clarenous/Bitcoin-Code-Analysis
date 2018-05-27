@@ -111,7 +111,9 @@ public:
     CScript scriptPubKey;
 ```
 
-分别代表该对象的编号`nValue`以及该输出的锁定脚本`scriptPubKey`。
+分别代表该输出的数值`nValue`以及该输出的锁定脚本`scriptPubKey`。
+
+这里有一个细节，即`int64`实际上是指`long long`类型，其最大值大于`1×10^18`。而比特币的最小单位是聪(satoshi)，且`1 BTC = 1×10^8 satoshi`，则比特币的总量为`2.1×10^7 BTC = 2.1×10^15 satoshi`。可见，该数据类型足以用最小单位记录比特币的数量。
 
 其他的成员函数如下：
 
@@ -206,7 +208,7 @@ public:
     unsigned int n;
 ```
 
-每一个输出`CTxOut`都有一个256位的哈希作为唯一的标识。
+每一个输出`CTxOut`都有一个256位的哈希作为唯一的标识。`n`则是指
 
 需要注意的是，这里的类`uint256`在[uint256.h](../src/uint256.h)中被定义，类中包含一个数组`unsigned int pn[8]`。这个256位的哈希值正是存储在这个数组中。
 
