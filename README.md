@@ -18,4 +18,4 @@ Code Analysis for Bitcoin v0.01 ALPHA.
 
 [01-Interaction-with-Database](docs/01-Interaction-with-Database.md)  更新于 2018.05.26
 
-[02-UTXO-and-Transactions](docs/02-UTXO-and-Transactions.md)  更新于 2018.05.27
+[02-UTXO-and-Transactions](docs/02-UTXO-and-Transactions.md)  更新于 2018.05.30

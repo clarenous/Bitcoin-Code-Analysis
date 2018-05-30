@@ -208,9 +208,9 @@ public:
     unsigned int n;
 ```
 
-每一个输出`CTxOut`都有一个256位的哈希作为唯一的标识。`n`则是指
+`hash`是指产生该输出的交易TxPrev的256位哈希值，这个值是唯一的。需要注意的是，这里的类`uint256`在[uint256.h](../src/uint256.h)中被定义，类中包含一个数组`unsigned int pn[8]`。这个256位的哈希值正是存储在这个数组中。
 
-需要注意的是，这里的类`uint256`在[uint256.h](../src/uint256.h)中被定义，类中包含一个数组`unsigned int pn[8]`。这个256位的哈希值正是存储在这个数组中。
+`n`是指该输出在交易TxPrev中，位于输出数组的序号值。对于Coinbase交易，`n`取`unsigned int`类型的最大值，即`n = 2^32 - 1 = 4294967295`。
 
 `COutPoint`的其他成员函数也很好理解，这里不做介绍。
 
@@ -229,7 +229,17 @@ public:
 
 所以，这里的`prevout`指出了本`CTxIn`的来源。而`scriptSig`的作用在于，用我的解锁脚本证明`prevout`这笔输出的解锁权归我所有，即证明这一笔钱归持有唯一私钥的我所有。
 
-有两个比较重要的成员函数是：
+`nSequence`的类型是`unsigned int`，最大值`0xffffffff`。该数值常常在构造交易时与`CTransaction`类的`nLockTime`配合使用，将在下一部分详解。但我们可以先对这个成员函数`isFinal()`留下印象，即在`nSequence`值达到最大时，认为该交易输入达到了最终状态。
+
+``` cpp
+public:
+    bool IsFinal() const
+        {
+            return (nSequence == UINT_MAX);
+        }
+```
+
+还有两个比较重要的成员函数是：
 
 ``` cpp
 public:
@@ -257,7 +267,56 @@ public:
 };
 ```
 
-其中，`ptx`是指向引入了该输入的交易的指针。
+其中，`ptx`是指向引入了该输入的交易的指针。`n`是该输入在`ptx`的输入数组中的序号数值。
 
-### 4. 待更
+### 4. class CTransaction 交易类
+
+`CTransaction`是包含在区块数据中，以及被广播的基础交易类，每一笔交易可以有多个输入(CTxIn)和输出(CTxOut)。
+
+类的基础数据成员如下：
+
+``` cpp
+public:
+    int nVersion;
+    vector<CTxIn> vin;
+    vector<CTxOut> vout;
+    int nLockTime;
+```
+
+`nVersion`是为以后新协议的扩展准备的，目前的值为1。`nlockTime`则是指该交易计划被延后打包的区块高度或时间戳。`vin`和`vout`分别是包含了本交易中所有输入和输出的数组。
+
+#### 4.1 nLockTime 详解
+
+下面重点介绍很多人感到困惑的`nLockTime`。
+
+`CTransaction`中的`nLockTime`使得某个已经被签名的交易不会被立即打包，而是延后等待一段时间，具体的延后的方法是：
+
+> | Value | Description |
+> | - | - |
+> | 0 | Not locked |
+> | < 500000000 | Block number at which this transaction is unlocked |
+> | >= 500000000 | UNIX timestamp at which this transaction is unlocked |
+> 来源：https://en.bitcoin.it/wiki/Protocol_documentation#tx
+
+即`nLockTime == 0`时，交易被立即打包。`0 < nLockTime < 500000000`时，若当前块高度大于nLockTime则进行打包。`nLockTime >= 500000000`时，nLockTime代表一个UNIX时间戳，当前时间大于改时间戳时，允许打包。
+
+但是，并非为交易设置nLockTime就一定能够被延后打包。如果一笔交易中，所有输入(CTxIn)都达到了Final状态，即`nSequence`都被设置为了`0xffffffff`，那么该交易也会被立即打包。落实到代码，就是这样：
+
+``` cpp
+public:
+    // 这里nLockTime并未做UNIX时间戳使用，是因为初版比特币代码发布时，协议中还只是用了区块高度用来做交易延迟
+    bool IsFinal() const
+        {
+            if (nLockTime == 0 || nLockTime < nBestHeight)
+                return true;
+            foreach(const CTxIn& txin, vin)
+                if (!txin.IsFinal())
+                    return false;
+            return true;
+        }
+```
+
+比特币中引入这种设计，可以满足一些特殊的场景。例如在商业合作中，一笔交易将包含多个人的签名，他们预先构造并广播交易后，还有机会在延迟打包前用新的交易替换原交易。而在更为复杂的场景下，如果对单个输入(CTxIn)已经达成最终共识，就可以重新签名，将该输入的nSequence设置为`0xffffffff`；当一笔交易中的所有输入都已达成最终共识，则继续等待延迟打包就不再有意义，而可以直接将交易打包进区块了。
+
+#### 4.2 从硬盘中读取并构造交易对象
 
