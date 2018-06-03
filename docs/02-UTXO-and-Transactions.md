@@ -89,7 +89,7 @@ public:
 
 #### 2.2 class CTxIndex
 
-`CTxIndex`的作用在于，在内存中存储某笔交易引用了哪些交易的输出，从而方便调试。其基本数据成员如下：
+`CTxIndex`的作用在于，在内存中存储某笔交易在硬盘中的`pos`，以及引用了该笔交易的输出的哪些交易在硬盘中的位置`vSpent`。从而方便调试。其基本数据成员如下：
 
 ``` cpp
 public:
@@ -296,9 +296,14 @@ public:
 > | 0 | Not locked |
 > | < 500000000 | Block number at which this transaction is unlocked |
 > | >= 500000000 | UNIX timestamp at which this transaction is unlocked |
+>  
 > 来源：https://en.bitcoin.it/wiki/Protocol_documentation#tx
 
-即`nLockTime == 0`时，交易被立即打包。`0 < nLockTime < 500000000`时，若当前块高度大于nLockTime则进行打包。`nLockTime >= 500000000`时，nLockTime代表一个UNIX时间戳，当前时间大于改时间戳时，允许打包。
+* `nLockTime == 0`时，交易被立即打包。
+
+* `0 < nLockTime < 500000000`时，若当前块高度大于nLockTime，则允许打包。
+
+* `nLockTime >= 500000000`时，nLockTime代表一个UNIX时间戳，若当前时间大于改时间戳，则允许打包。
 
 但是，并非为交易设置nLockTime就一定能够被延后打包。如果一笔交易中，所有输入(CTxIn)都达到了Final状态，即`nSequence`都被设置为了`0xffffffff`，那么该交易也会被立即打包。落实到代码，就是这样：
 
@@ -320,3 +325,27 @@ public:
 
 #### 4.2 从硬盘中读取并构造交易对象
 
+一个`CTransaction`对象是利用成员函数`ReadFromDisk`来从硬盘中读取并构造交易对象的。代码如下：
+
+``` cpp
+bool ReadFromDisk(CDiskTxPos pos, FILE** pfileRet=NULL)
+    {
+        CAutoFile filein = OpenBlockFile(pos.nFile, 0, pfileRet ? "rb+" : "rb");
+        if (!filein)
+            return error("CTransaction::ReadFromDisk() : OpenBlockFile failed");
+
+        // Read transaction
+        if (fseek(filein, pos.nTxPos, SEEK_SET) != 0)
+            return error("CTransaction::ReadFromDisk() : fseek failed");
+        filein >> *this;
+
+        // Return file pointer
+        if (pfileRet)
+        {
+            if (fseek(filein, pos.nTxPos, SEEK_SET) != 0)
+                return error("CTransaction::ReadFromDisk() : second fseek failed");
+            *pfileRet = filein.release();
+        }
+        return true;
+    }
+``
